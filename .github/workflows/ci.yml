@@ -1,0 +1,80 @@
+name: CI
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}-cicdbench-github-r174
+  cancel-in-progress: true
+jobs:
+  test:
+    name: ${{ matrix.root-pom }} on JDK ${{ matrix.java }} on ${{ matrix.os }}
+    strategy:
+      matrix:
+        os:
+          - ubuntu-latest
+        java:
+          - 8
+          - 11
+          - 17
+          - 25
+        root-pom:
+          - pom.xml
+          - android/pom.xml
+        include: []
+    runs-on: ubuntu-latest
+    env:
+      ROOT_POM: ${{ matrix.root-pom }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Set up JDKs
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
+        with:
+          java-version: |
+            ${{ matrix.java }}
+            27
+          distribution: temurin
+          cache: maven
+      - name: Install
+        shell: bash
+        run: ./mvnw -B -Dtoolchain.skip install -U -DskipTests=true -f $ROOT_POM
+      - name: Test
+        shell: bash
+        run: ./mvnw -B -P!standard-with-extra-repos -Dtoolchain.skip verify -U -Dmaven.javadoc.skip=true -Dsurefire.toolchain.version=${{ matrix.java }} -f $ROOT_POM
+      - name: Print Surefire reports
+        if: ${{ failure() }}
+        shell: bash
+        run: ./util/print_surefire_reports.sh
+    timeout-minutes: 30
+  gradle-test:
+    name: Gradle Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Set up JDKs
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
+        with:
+          java-version: |
+            11
+            17
+            27
+          distribution: temurin
+          cache: maven
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6
+      - name: Integration Test
+        shell: bash
+        run: util/gradle_integration_tests.sh
+    timeout-minutes: 30
